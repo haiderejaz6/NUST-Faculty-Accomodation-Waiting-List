@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NUST Faculty Housing — Applicant Registry &amp; Queue Tracker</title>
+<meta name="description" content="Interactive, multi-snapshot registry of NUST faculty on-campus housing applicants — queue rank, waiting time, and a projected turn estimate based on observed movement between list updates.">
+<meta name="robots" content="index, follow">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --blueprint:#0F2D4E;
+    --blueprint-2:#16395E;
+    --line:#5C87AC;
+    --line-soft:rgba(151,194,231,.16);
+    --paper:#EEE8D9;
+    --paper-2:#E4DCC8;
+    --paper-line:#C9BFA3;
+    --ink:#1C2430;
+    --ink-soft:#5B6472;
+    --brass:#C9974B;
+    --wax:#B6432F;
+    --green:#5E9C6E;
+    --mist:#E7EEF5;
+    --mist-soft:#A9C2D9;
+    --r:10px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--blueprint);
+    background-image:
+      repeating-linear-gradient(0deg, var(--line-soft) 0 1px, transparent 1px 28px),
+      repeating-linear-gradient(90deg, var(--line-soft) 0 1px, transparent 1px 28px);
+    color:var(--mist);
+    font-family:'IBM Plex Sans', system-ui, sans-serif;
+    min-height:100vh;
+    padding:28px 28px 60px;
+  }
+  a{color:inherit;}
+  .wrap{max-width:1280px;margin:0 auto;}
+
+  /* ---------- Title block ---------- */
+  .titleblock{
+    border:1.5px solid var(--mist-soft);
+    border-radius:4px;
+    display:grid;
+    grid-template-columns: 1.5fr 1fr 1fr 1fr 1fr;
+    overflow:hidden;
+    margin-bottom:20px;
+  }
+  .tb-cell{ padding:16px 18px; border-left:1px solid var(--mist-soft); }
+  .tb-cell:first-child{border-left:none;}
+  .tb-label{
+    font-family:'IBM Plex Mono', monospace; font-size:10.5px; letter-spacing:.12em;
+    text-transform:uppercase; color:var(--mist-soft); margin-bottom:6px;
+  }
+  .tb-main h1{ font-family:'Space Grotesk', sans-serif; font-size:clamp(20px, 2.6vw, 27px); font-weight:700; margin:0 0 4px; letter-spacing:.01em;}
+  .tb-main p{margin:0;font-size:12.5px;color:var(--mist-soft);}
+  .tb-val{ font-family:'Space Grotesk', sans-serif; font-size:24px; font-weight:600; line-height:1.1;}
+  .tb-val small{display:block;font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--mist-soft);font-weight:400;margin-top:3px;letter-spacing:.03em;}
+
+  /* ---------- Notice / error ---------- */
+  .notice{
+    background:var(--wax); color:#fff; border-radius:var(--r); padding:14px 18px;
+    margin-bottom:20px; font-size:13.5px; line-height:1.5; display:none;
+  }
+  .notice code{background:rgba(0,0,0,.2); padding:1px 5px; border-radius:4px; font-family:'IBM Plex Mono',monospace;}
+
+  /* ---------- Search panel ---------- */
+  .searchpanel{
+    background:var(--brass); color:#2b1e07; border-radius:var(--r); padding:18px 20px 20px;
+    margin-bottom:20px;
+  }
+  .searchpanel h2{font-family:'Space Grotesk',sans-serif; font-size:16px; margin:0 0 4px;}
+  .searchpanel p{margin:0 0 12px; font-size:12.5px; color:#4a3714;}
+  .searchpanel input[type=text]{
+    width:100%; padding:12px 14px; border-radius:8px; border:1px solid #a97e39;
+    font-family:'IBM Plex Sans',sans-serif; font-size:15px; color:var(--ink); background:#fffaf0;
+  }
+  .search-results{margin-top:14px; display:flex; flex-direction:column; gap:10px;}
+  .search-hit{
+    background:#fffaf0; border-radius:8px; padding:12px 14px; color:var(--ink);
+    display:grid; grid-template-columns: 1.4fr 1fr 1fr 1fr; gap:10px; align-items:center;
+  }
+  .search-hit .sh-name{font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:14px;}
+  .search-hit .sh-sub{font-size:11.5px; color:var(--ink-soft); margin-top:2px;}
+  .search-hit .sh-stat-label{font-family:'IBM Plex Mono',monospace; font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:var(--ink-soft); margin-bottom:2px;}
+  .search-hit .sh-stat-val{font-family:'Space Grotesk',sans-serif; font-size:15px; font-weight:600;}
+  .search-empty{font-size:12.5px; color:#4a3714; font-style:italic;}
+  @media(max-width:900px){ .search-hit{grid-template-columns:1fr 1fr;} }
+
+  /* ---------- Category sheets ---------- */
+  .sheets{ display:grid; grid-template-columns:repeat(auto-fit, minmax(195px,1fr)); gap:12px; margin-bottom:20px;}
+  .sheet{
+    background:var(--blueprint-2); border:1px solid var(--mist-soft); border-radius:var(--r);
+    padding:14px 16px 16px; cursor:pointer; text-align:left; color:var(--mist); font-family:inherit;
+    transition:border-color .15s, background .15s; position:relative;
+  }
+  .sheet:hover{border-color:var(--brass);}
+  .sheet.active{ background:var(--brass); border-color:var(--brass); color:#1C1304;}
+  .sheet.active .sheet-sheet, .sheet.active .sheet-meta, .sheet.active .sheet-rate{color:#3a2c0c;}
+  .sheet-sheet{ font-family:'IBM Plex Mono', monospace; font-size:10px; letter-spacing:.1em; color:var(--mist-soft); margin-bottom:8px;}
+  .sheet-name{ font-family:'Space Grotesk', sans-serif; font-weight:600; font-size:14.5px; margin-bottom:10px; line-height:1.25; min-height:36px;}
+  .sheet-count{ font-family:'Space Grotesk', sans-serif; font-size:28px; font-weight:700; line-height:1;}
+  .sheet-meta{ font-family:'IBM Plex Mono', monospace; font-size:10.5px; color:var(--mist-soft); margin-top:6px;}
+  .sheet-rate{ font-family:'IBM Plex Mono', monospace; font-size:11px; color:var(--brass); margin-top:4px; font-weight:600;}
+  .sheet.active .sheet-rate{color:#3a2c0c;}
+
+  /* ---------- Panels / charts ---------- */
+  .charts{ display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:16px; margin-bottom:20px;}
+  .panel{ background:var(--blueprint-2); border:1px solid var(--mist-soft); border-radius:var(--r); padding:16px 18px 18px;}
+  .panel h3{ font-family:'Space Grotesk', sans-serif; font-size:13px; font-weight:600; margin:0 0 4px; text-transform:uppercase; letter-spacing:.06em;}
+  .panel .panel-sub{font-size:10.5px;color:var(--mist-soft);margin:0 0 14px;font-family:'IBM Plex Mono',monospace;}
+  .bar-row{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:10px;margin-bottom:9px;font-size:12px;}
+  .bar-row .blabel{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--mist-soft);white-space:nowrap;text-align:right;}
+  .bar-track{ height:9px;border-radius:3px;background:rgba(255,255,255,.08);
+    background-image:repeating-linear-gradient(90deg, rgba(255,255,255,.10) 0 1px, transparent 1px 10%); overflow:hidden;}
+  .bar-fill{height:100%;border-radius:3px;background:var(--line);}
+  .bar-fill.brass{background:var(--brass);}
+  .bar-fill.wax{background:var(--wax);}
+  .bar-fill.green{background:var(--green);}
+  .bar-val{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--mist);min-width:34px;}
+  @media(max-width:1100px){ .charts{grid-template-columns:1fr 1fr;} }
+
+  /* ---------- Movements log ---------- */
+  .movepanel{ background:var(--blueprint-2); border:1px solid var(--mist-soft); border-radius:var(--r); padding:16px 18px 18px; margin-bottom:20px;}
+  .movepanel h3{ font-family:'Space Grotesk', sans-serif; font-size:13.5px; font-weight:600; margin:0 0 4px; text-transform:uppercase; letter-spacing:.06em;}
+  .movepanel .panel-sub{font-size:11px;color:var(--mist-soft);margin:0 0 14px;font-family:'IBM Plex Mono',monospace;}
+  .move-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;}
+  .move-cat{background:var(--blueprint); border:1px solid var(--line-soft); border-radius:8px; padding:12px 14px;}
+  .move-cat h4{margin:0 0 8px; font-family:'Space Grotesk',sans-serif; font-size:12.5px;}
+  .move-list{list-style:none; margin:0; padding:0; font-size:12px;}
+  .move-list li{padding:3px 0; display:flex; justify-content:space-between; gap:8px;}
+  .move-list .tag{font-family:'IBM Plex Mono',monospace; font-size:9.5px; text-transform:uppercase; letter-spacing:.05em; padding:1px 6px; border-radius:3px; flex-shrink:0;}
+  .tag.left{background:rgba(94,156,110,.25); color:#a8dab5;}
+  .tag.joined{background:rgba(201,151,75,.25); color:var(--brass);}
+  .move-empty{font-size:11.5px; color:var(--mist-soft); font-style:italic;}
+
+  /* ---------- Controls ---------- */
+  .controls{ display:flex;flex-wrap:wrap;gap:10px;align-items:center; background:var(--blueprint-2);
+    border:1px solid var(--mist-soft); border-radius:var(--r); padding:12px 14px; margin-bottom:14px;}
+  .controls input[type=text]{ flex:1;min-width:200px; background:var(--paper); border:1px solid var(--paper-line);
+    border-radius:6px; padding:9px 12px; color:var(--ink); font-family:'IBM Plex Sans',sans-serif; font-size:13.5px;}
+  .controls select{ background:var(--paper); border:1px solid var(--paper-line); border-radius:6px;
+    padding:9px 10px; color:var(--ink); font-family:'IBM Plex Sans',sans-serif; font-size:13px;}
+  .controls button{
+    background:transparent;border:1px solid var(--mist-soft);color:var(--mist);border-radius:6px;
+    padding:9px 14px;font-family:'IBM Plex Sans',sans-serif;font-size:13px;cursor:pointer;
+  }
+  .controls button:hover{border-color:var(--brass);color:var(--brass);}
+  .resultcount{font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--mist-soft);margin-bottom:10px;}
+
+  /* ---------- Table ---------- */
+  .tablewrap{ background:var(--paper); border-radius:var(--r); overflow:auto; border:1px solid var(--paper-line);}
+  table{width:100%; border-collapse:collapse; font-size:12.5px; color:var(--ink); min-width:1080px;}
+  thead th{
+    position:sticky; top:0; background:var(--paper-2); text-align:left; padding:10px 12px;
+    font-family:'IBM Plex Mono',monospace; font-size:10px; text-transform:uppercase; letter-spacing:.06em;
+    color:var(--ink-soft); border-bottom:1px solid var(--paper-line); cursor:pointer; white-space:nowrap;
+  }
+  thead th:hover{color:var(--wax);}
+  tbody td{padding:9px 12px; border-bottom:1px solid var(--paper-line); vertical-align:middle;}
+  tbody tr:hover{background:var(--paper-2);}
+  .rankcell{font-family:'IBM Plex Mono',monospace; color:var(--ink-soft);}
+  .namecell{font-weight:600;}
+  .desigcell{color:var(--ink-soft); font-size:12px;}
+  .datecell{font-family:'IBM Plex Mono',monospace; font-size:11.5px;}
+  .catpill{ font-family:'IBM Plex Mono',monospace; font-size:10px; background:var(--blueprint-2); color:var(--mist);
+    padding:3px 8px; border-radius:20px; white-space:nowrap;}
+  .waitbadge{display:inline-flex; align-items:center; gap:6px; font-family:'IBM Plex Mono',monospace; font-size:11.5px;}
+  .dot{width:7px;height:7px;border-radius:50%; display:inline-block;}
+  .dot.fresh{background:var(--green);}
+  .dot.mid{background:var(--brass);}
+  .dot.long{background:var(--wax);}
+  .movecell{font-family:'IBM Plex Mono',monospace; font-size:11.5px;}
+  .movecell.up{color:var(--green);}
+  .movecell.new{color:var(--brass);}
+  .estcell{font-family:'IBM Plex Mono',monospace; font-size:11.5px;}
+  .estcell .estdate{font-weight:600;}
+  .estcell .estmuted{color:var(--ink-soft); font-style:italic;}
+
+  /* ---------- Methodology ---------- */
+  details.method{ margin-top:20px; background:var(--blueprint-2); border:1px solid var(--mist-soft); border-radius:var(--r); padding:14px 18px;}
+  details.method summary{cursor:pointer; font-family:'Space Grotesk',sans-serif; font-size:13.5px; font-weight:600;}
+  details.method .body{margin-top:10px; font-size:12.5px; line-height:1.65; color:var(--mist-soft);}
+  details.method .body p{margin:0 0 10px;}
+  details.method .body code{background:rgba(0,0,0,.2); padding:1px 5px; border-radius:4px; font-family:'IBM Plex Mono',monospace; color:var(--mist);}
+
+  footer{margin-top:24px; text-align:center; font-size:11px; color:var(--mist-soft); font-family:'IBM Plex Mono',monospace;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="titleblock" id="titleblock">
+    <div class="tb-cell tb-main">
+      <h1>NUST Faculty Housing Registry</h1>
+      <p>Multi-snapshot applicant queue &amp; projected turn estimator</p>
+    </div>
+    <div class="tb-cell">
+      <div class="tb-label">Latest register</div>
+      <div class="tb-val" id="statLatestDate" style="font-size:17px;">—<small>as printed by DDAdmin</small></div>
+    </div>
+    <div class="tb-cell">
+      <div class="tb-label">Tracking since</div>
+      <div class="tb-val" id="statTracking" style="font-size:17px;">—<small id="statTrackingSub">—</small></div>
+    </div>
+    <div class="tb-cell">
+      <div class="tb-label">Total applicants</div>
+      <div class="tb-val" id="statTotal">—<small>across 6 categories</small></div>
+    </div>
+    <div class="tb-cell">
+      <div class="tb-label">Longest wait</div>
+      <div class="tb-val" id="statLongest" style="font-size:17px;">—<small id="statLongestName">—</small></div>
+    </div>
+  </div>
+
+  <div class="notice" id="notice"></div>
+
+  <div class="searchpanel">
+    <h2>Find your position</h2>
+    <p>Search your name to see your current rank, how long you've waited, and a projected turn based on how fast this category has been moving.</p>
+    <input type="text" id="personSearch" placeholder="Type your name (e.g. Ahsan, Nadia Jahan, Dr Zeshan)…" autocomplete="off">
+    <div class="search-results" id="searchResults"></div>
+  </div>
+
+  <div class="sheets" id="sheets"></div>
+
+  <div class="charts">
+    <div class="panel">
+      <h3>By category</h3>
+      <p class="panel-sub">applicants currently on each list</p>
+      <div id="chartCats"></div>
+    </div>
+    <div class="panel">
+      <h3>Queue velocity</h3>
+      <p class="panel-sub">est. allocations / month, by category</p>
+      <div id="chartVelocity"></div>
+    </div>
+    <div class="panel">
+      <h3>By department</h3>
+      <p class="panel-sub">top departments in current view</p>
+      <div id="chartDepts"></div>
+    </div>
+    <div class="panel">
+      <h3>Wait distribution</h3>
+      <p class="panel-sub">time since request, current view</p>
+      <div id="chartWait"></div>
+    </div>
+  </div>
+
+  <div class="movepanel">
+    <h3>Recent movement</h3>
+    <p class="panel-sub" id="moveSub">people who left each list are presumed allocated (or withdrawn); this is what the velocity numbers above are built from</p>
+    <div class="move-grid" id="moveGrid"></div>
+  </div>
+
+  <div class="controls">
+    <input type="text" id="search" placeholder="Filter by name or department…">
+    <select id="designationFilter"><option value="">All designations</option></select>
+    <select id="sortSelect">
+      <option value="rank_asc">Sort: category rank</option>
+      <option value="wait_desc">Sort: longest waiting first</option>
+      <option value="wait_asc">Sort: newest applicants first</option>
+      <option value="est_asc">Sort: soonest projected turn</option>
+      <option value="name_asc">Sort: name (A–Z)</option>
+      <option value="dept_asc">Sort: department</option>
+    </select>
+    <button id="resetBtn">Reset</button>
+  </div>
+  <div class="resultcount" id="resultCount"></div>
+
+  <div class="tablewrap">
+    <table>
+      <thead>
+        <tr>
+          <th data-k="rank">Rank</th>
+          <th data-k="name">Name</th>
+          <th data-k="desig">Designation</th>
+          <th data-k="dept">Dept</th>
+          <th data-k="cat">Category</th>
+          <th data-k="date">Requested</th>
+          <th data-k="wait">Waiting</th>
+          <th data-k="move">Since last list</th>
+          <th data-k="est">Projected turn</th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+
+  <details class="method">
+    <summary>How the projected turn is calculated</summary>
+    <div class="body">
+      <p><strong>Velocity.</strong> Each time a new register is added, this page compares it to the previous one, category by category. Anyone who was on a list before and isn't anymore is counted as a <em>departure</em> — almost always an allocation, occasionally a withdrawal or transfer between categories, which we can't fully tell apart from the register alone. Departures ÷ days between the two lists ÷ <code>30.44</code> gives allocations per month for that category. With more than one interval on file, the rate is the total departures across all intervals divided by total days — this smooths out any one unusually quiet or busy stretch.</p>
+      <p><strong>Projected turn.</strong> For someone at rank <code>R</code> in a category, the estimate is <code>R ÷ monthly rate</code> months from the latest register date. This assumes the category keeps clearing from the front at roughly its historical pace — a reasonable first estimate, not a promise. It will get more reliable as more registers are added, and categories with only one interval of data (as now) carry a wider margin of error.</p>
+      <p><strong>Matching people across lists.</strong> Names are matched after stripping titles (Dr, Mr, Ms, Engr…) and punctuation. A small number of spelling variants between PDFs (e.g. OCR differences) are caught with a fuzzy match against department and request date. Genuine near-duplicate names in different categories are treated as different applications, since categories are matched separately.</p>
+      <p><strong>Adding a new register.</strong> Convert the new PDF into a dated JSON file following the same shape as the existing files in <code>/data</code>, add its filename to <code>data/manifest.json</code>, and push. No code changes needed — this page re-reads the manifest and recomputes everything on load.</p>
+    </div>
+  </details>
+
+  <footer>Source: NUST Directorate of Accommodation waiting lists. Rankings and rates are estimates for planning purposes only and are not an official commitment from NUST.</footer>
+</div>
+
+<script>
+/* ============================== CONFIG ============================== */
+const CATS = [
+  {key:'3bed',  label:'3 Bed',                        sheet:'3 Bed'},
+  {key:'25bed', label:'2.5 Bed',                       sheet:'2.5 Bed'},
+  {key:'kkll',  label:'2 Bed — KK & LL Blocks',        sheet:'2 Bed · KK/LL'},
+  {key:'klmn',  label:'2 Bed — K, L, M, N Blocks',     sheet:'2 Bed · K/L/M/N'},
+  {key:'iqra',  label:'2 Bed — Iqra V, W, X, Y Blocks',sheet:'2 Bed · Iqra'},
+  {key:'1bed',  label:'1 Bed',                         sheet:'1 Bed'}
+];
+const MS_DAY = 86400000;
+const MS_MONTH = MS_DAY * 30.4368;
+
+/* ============================== HELPERS ============================== */
+function normName(name){
+  return name.toLowerCase()
+    .replace(/^(dr\.?|mr\.?|ms\.?|mrs\.?|engr\.?|prof\.?)\s+/,'')
+    .replace(/[^a-z ]/g,'')
+    .replace(/\s+/g,' ')
+    .trim();
+}
+function levenshtein(a,b){
+  const m=a.length,n=b.length;
+  if(!m) return n; if(!n) return m;
+  let prev = Array.from({length:n+1},(_,i)=>i);
+  for(let i=1;i<=m;i++){
+    let cur=[i];
+    for(let j=1;j<=n;j++){
+      cur[j] = a[i-1]===b[j-1] ? prev[j-1] : 1+Math.min(prev[j-1],prev[j],cur[j-1]);
+    }
+    prev=cur;
+  }
+  return prev[n];
+}
+function simRatio(a,b){
+  if(!a.length && !b.length) return 1;
+  const d = levenshtein(a,b);
+  return 1 - d/Math.max(a.length,b.length);
+}
+function fmtWait(days){
+  if(days < 0) days = 0;
+  if(days < 30) return days+"d";
+  if(days < 365){ const m = Math.round(days/30.4); return m+"mo"; }
+  const y = Math.floor(days/365.25);
+  const rem = Math.round((days - y*365.25)/30.4);
+  return rem>0 ? y+"y "+rem+"mo" : y+"y";
+}
+function waitTier(days){
+  if(days < 365) return 'fresh';
+  if(days < 1095) return 'mid';
+  return 'long';
+}
+function fmtDate(d){
+  return d.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
+}
+function fmtMonths(m){
+  if(m < 1) return "< 1 mo";
+  if(m < 24) return Math.round(m)+" mo";
+  return (m/12).toFixed(1)+" yr";
+}
+function bar(label, value, max, cls){
+  const pct = max>0 ? Math.max(2, Math.round(value/max*100)) : 0;
+  return `<div class="bar-row">
+    <div class="blabel">${label}</div>
+    <div class="bar-track"><div class="bar-fill ${cls||''}" style="width:${pct}%"></div></div>
+    <div class="bar-val">${value}</div>
+  </div>`;
+}
+function showNotice(html){
+  const el = document.getElementById('notice');
+  el.innerHTML = html;
+  el.style.display = 'block';
+}
+
+/* ============================== NAME MATCHING BETWEEN TWO SNAPSHOTS ============================== */
+function matchCategory(oldRows, newRows){
+  // rows: [{name, desig, dept, dateStr, norm}]
+  const oldPool = oldRows.map((r,i)=>({...r, idx:i}));
+  const newPool = newRows.map((r,i)=>({...r, idx:i}));
+  const stayed = []; // {oldRow, newRow}
+  // pass 1: exact normalized name match
+  const newByNorm = new Map();
+  newPool.forEach(r=>{ if(!newByNorm.has(r.norm)) newByNorm.set(r.norm,[]); newByNorm.get(r.norm).push(r); });
+  const usedNew = new Set(), usedOld = new Set();
+  oldPool.forEach(o=>{
+    const cands = newByNorm.get(o.norm);
+    if(cands && cands.length){
+      const n = cands.shift();
+      stayed.push({oldRow:o, newRow:n});
+      usedOld.add(o.idx); usedNew.add(n.idx);
+    }
+  });
+  // pass 2: fuzzy match remaining, using name similarity + (dept match or close date)
+  const remOld = oldPool.filter(o=>!usedOld.has(o.idx));
+  const remNew = newPool.filter(n=>!usedNew.has(n.idx));
+  const pairs = [];
+  remOld.forEach(o=>{
+    remNew.forEach(n=>{
+      const sim = simRatio(o.norm, n.norm);
+      if(sim >= 0.78){
+        const sameDept = o.dept.toLowerCase() === n.dept.toLowerCase();
+        const dOld = new Date(o.dateStr+"T00:00:00"), dNew = new Date(n.dateStr+"T00:00:00");
+        const closeDate = Math.abs(dOld-dNew) <= 10*MS_DAY;
+        if(sameDept || closeDate){
+          pairs.push({o,n,score:sim + (sameDept?0.1:0) + (closeDate?0.05:0)});
+        }
+      }
+    });
+  });
+  pairs.sort((a,b)=>b.score-a.score);
+  const usedOld2 = new Set(), usedNew2 = new Set();
+  pairs.forEach(p=>{
+    if(!usedOld2.has(p.o.idx) && !usedNew2.has(p.n.idx)){
+      stayed.push({oldRow:p.o, newRow:p.n});
+      usedOld2.add(p.o.idx); usedNew2.add(p.n.idx);
+    }
+  });
+  const departed = remOld.filter(o=>!usedOld2.has(o.idx));
+  const arrived = remNew.filter(n=>!usedNew2.has(n.idx));
+  return {stayed, departed, arrived};
+}
+
+/* ============================== MAIN ============================== */
+async function main(){
+  let manifest, snapshots;
+  try{
+    const mRes = await fetch('data/manifest.json');
+    if(!mRes.ok) throw new Error('manifest fetch failed: '+mRes.status);
+    manifest = await mRes.json();
+    snapshots = await Promise.all(manifest.snapshots.map(async f=>{
+      const r = await fetch('data/'+f);
+      if(!r.ok) throw new Error('snapshot fetch failed: '+f);
+      return r.json();
+    }));
+  }catch(err){
+    showNotice(`Couldn't load the data files (<code>${err.message}</code>). This page loads <code>data/*.json</code> via <code>fetch()</code>, which browsers block on a plain <code>file://</code> path. Serve it locally with e.g. <code>python3 -m http.server</code> and open <code>http://localhost:8000</code>, or view it once it's published on GitHub Pages.`);
+    return;
+  }
+
+  snapshots.sort((a,b)=> a.date.localeCompare(b.date));
+  // attach norm to every row
+  snapshots.forEach(snap=>{
+    CATS.forEach(c=>{
+      snap.categories[c.key] = (snap.categories[c.key]||[]).map(row=>{
+        const [name,desig,dept,dateStr] = row;
+        return {name,desig,dept,dateStr,norm:normName(name)};
+      });
+    });
+  });
+
+  const latest = snapshots[snapshots.length-1];
+  const prev = snapshots.length>1 ? snapshots[snapshots.length-2] : null;
+
+  /* -------- diff every consecutive pair, per category -------- */
+  const periodsByCat = {}; // key -> [{fromDate,toDate,days,departed:[],arrived:[],stayed:[]}]
+  CATS.forEach(c=> periodsByCat[c.key] = []);
+  for(let i=1;i<snapshots.length;i++){
+    const a = snapshots[i-1], b = snapshots[i];
+    const days = (new Date(b.date+"T00:00:00") - new Date(a.date+"T00:00:00")) / MS_DAY;
+    CATS.forEach(c=>{
+      const res = matchCategory(a.categories[c.key], b.categories[c.key]);
+      periodsByCat[c.key].push({fromDate:a.date, toDate:b.date, days, ...res});
+    });
+  }
+
+  /* -------- velocity per category -------- */
+  const RATE = {};
+  CATS.forEach(c=>{
+    const periods = periodsByCat[c.key];
+    const totalDeparted = periods.reduce((s,p)=>s+p.departed.length,0);
+    const totalDays = periods.reduce((s,p)=>s+p.days,0);
+    const monthlyRate = totalDays>0 ? totalDeparted/totalDays*30.4368 : 0;
+    const lastPeriod = periods.length ? periods[periods.length-1] : null;
+    RATE[c.key] = {monthlyRate, periods: periods.length, totalDays, totalDeparted, lastPeriod};
+  });
+
+  /* -------- rank-change map for latest period (prevRank lookup) -------- */
+  const prevRankMap = {}; // catKey -> Map(normName -> {prevRank, prevTotal})
+  CATS.forEach(c=> prevRankMap[c.key] = new Map());
+  if(prev){
+    const lastPer = periodsByCat[CATS[0].key].length ? true : false;
+    CATS.forEach(c=>{
+      const per = periodsByCat[c.key][periodsByCat[c.key].length-1];
+      per.stayed.forEach(s=>{
+        prevRankMap[c.key].set(s.newRow.norm, s.oldRow.idx+1);
+      });
+    });
+  }
+
+  /* -------- build RECORDS for latest snapshot -------- */
+  const now = new Date();
+  const latestDate = new Date(latest.date+"T00:00:00");
+  let RECORDS = [];
+  CATS.forEach(cat=>{
+    latest.categories[cat.key].forEach((row,i)=>{
+      const rank = i+1;
+      const d = new Date(row.dateStr+"T00:00:00");
+      const days = Math.floor((now - d)/MS_DAY);
+      const rate = RATE[cat.key].monthlyRate;
+      const estMonths = rate>0 ? rank/rate : null;
+      const estDate = estMonths!=null ? new Date(latestDate.getTime() + estMonths*MS_MONTH) : null;
+      const prevRank = prevRankMap[cat.key].get(row.norm) || null;
+      RECORDS.push({
+        rank, name:row.name, desig:row.desig, dept:row.dept,
+        date:d, dateStr:row.dateStr, catKey:cat.key, catLabel:cat.label,
+        days, estMonths, estDate, prevRank, isNew: prev ? (prevRank===null) : false
+      });
+    });
+  });
+  const TOTAL = RECORDS.length;
+
+  /* ============================== HEADER STATS ============================== */
+  document.getElementById('statLatestDate').innerHTML = fmtDate(latestDate) + '<small>as printed by DDAdmin</small>';
+  const first = snapshots[0];
+  document.getElementById('statTracking').innerHTML = fmtDate(new Date(first.date+"T00:00:00")) + '<small id="statTrackingSub"></small>';
+  document.getElementById('statTrackingSub').textContent = snapshots.length + (snapshots.length===1 ? ' register on file' : ' registers on file');
+  document.getElementById('statTotal').innerHTML = TOTAL + '<small>across 6 categories</small>';
+  const longest = RECORDS.reduce((a,b)=> b.days > a.days ? b : a, RECORDS[0]);
+  document.getElementById('statLongest').innerHTML = fmtWait(longest.days) + '<small id="statLongestName"></small>';
+  document.getElementById('statLongestName').textContent = longest.name + ' · ' + longest.catLabel;
+
+  if(snapshots.length < 2){
+    showNotice('Only one register is on file so far — velocity and projected-turn estimates need at least two registers to compute a rate. Add the next list to <code>data/</code> and update <code>manifest.json</code> to unlock them.');
+  }
+
+  /* ============================== SHEETS ============================== */
+  const sheetsEl = document.getElementById('sheets');
+  let activeCat = '';
+  function renderSheets(){
+    sheetsEl.innerHTML = '';
+    CATS.forEach(cat=>{
+      const recs = RECORDS.filter(r=>r.catKey===cat.key);
+      const oldest = recs.length ? recs.reduce((a,b)=> b.days > a.days ? b : a, recs[0]) : null;
+      const rateInfo = RATE[cat.key];
+      const rateStr = rateInfo.periods>0
+        ? (rateInfo.monthlyRate>0 ? '~'+rateInfo.monthlyRate.toFixed(1)+'/mo moving' : 'no vacancies yet')
+        : 'no history yet';
+      const btn = document.createElement('button');
+      btn.className = 'sheet' + (activeCat===cat.key ? ' active' : '');
+      btn.innerHTML = `
+        <div class="sheet-sheet">${cat.sheet}</div>
+        <div class="sheet-name">${cat.label}</div>
+        <div class="sheet-count">${recs.length}</div>
+        <div class="sheet-meta">applicants · longest wait ${oldest?fmtWait(oldest.days):'—'}</div>
+        <div class="sheet-rate">${rateStr}</div>
+      `;
+      btn.addEventListener('click', ()=>{
+        activeCat = (activeCat===cat.key) ? '' : cat.key;
+        renderSheets();
+        applyFilters();
+      });
+      sheetsEl.appendChild(btn);
+    });
+  }
+
+  /* ============================== CHARTS ============================== */
+  function renderCatChart(){
+    const max = Math.max(...CATS.map(c=>RECORDS.filter(r=>r.catKey===c.key).length));
+    document.getElementById('chartCats').innerHTML = CATS.map(c=>{
+      const n = RECORDS.filter(r=>r.catKey===c.key).length;
+      return bar(c.label, n, max, c.key===activeCat ? 'brass':'');
+    }).join('');
+  }
+  function renderVelocityChart(){
+    const rates = CATS.map(c=>RATE[c.key].monthlyRate);
+    const max = Math.max(...rates, 0.1);
+    document.getElementById('chartVelocity').innerHTML = CATS.map(c=>{
+      const v = RATE[c.key].monthlyRate;
+      return bar(c.label, Number(v.toFixed(1)), max, c.key===activeCat ? 'brass':'green');
+    }).join('') + (snapshots.length<2 ? '<p style="font-size:11px;color:var(--mist-soft);margin-top:6px;">Needs a second register to compute.</p>' : '');
+  }
+  function renderDeptChart(filtered){
+    const counts = {};
+    filtered.forEach(r=> counts[r.dept] = (counts[r.dept]||0)+1 );
+    const arr = Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,10);
+    const max = arr.length ? arr[0][1] : 1;
+    document.getElementById('chartDepts').innerHTML = arr.map(([d,n])=> bar(d, n, max)).join('') || '<p style="font-size:12px;color:var(--mist-soft)">No matching entries.</p>';
+  }
+  function renderWaitChart(filtered){
+    const buckets = [
+      {label:'< 1 yr', test:d=>d<365},
+      {label:'1–2 yr', test:d=>d>=365 && d<730},
+      {label:'2–3 yr', test:d=>d>=730 && d<1095},
+      {label:'3–5 yr', test:d=>d>=1095 && d<1825},
+      {label:'5+ yr',  test:d=>d>=1825},
+    ];
+    const counts = buckets.map(b=> filtered.filter(r=>b.test(r.days)).length );
+    const max = Math.max(...counts, 1);
+    document.getElementById('chartWait').innerHTML = buckets.map((b,i)=>{
+      const cls = i<2 ? '' : (i<4 ? 'brass' : 'wax');
+      return bar(b.label, counts[i], max, cls);
+    }).join('');
+  }
+
+  /* ============================== MOVEMENTS LOG ============================== */
+  function renderMovements(){
+    const grid = document.getElementById('moveGrid');
+    if(snapshots.length < 2){
+      grid.innerHTML = '<p class="move-empty">No movement to show yet — this appears once a second register is on file.</p>';
+      document.getElementById('moveSub').textContent = 'appears once a second register is added';
+      return;
+    }
+    const per = periodsByCat[CATS[0].key][periodsByCat[CATS[0].key].length-1];
+    document.getElementById('moveSub').textContent =
+      `${fmtDate(new Date(per.fromDate+"T00:00:00"))} → ${fmtDate(new Date(per.toDate+"T00:00:00"))} · people who left a list are presumed allocated (or withdrawn)`;
+    grid.innerHTML = CATS.map(c=>{
+      const p = periodsByCat[c.key][periodsByCat[c.key].length-1];
+      const items = [];
+      p.departed.forEach(d=> items.push(`<li><span>${d.name}</span><span class="tag left">left</span></li>`));
+      p.arrived.forEach(a=> items.push(`<li><span>${a.name}</span><span class="tag joined">new</span></li>`));
+      return `<div class="move-cat">
+        <h4>${c.label}</h4>
+        <ul class="move-list">${items.length ? items.join('') : '<li class="move-empty">No change this period.</li>'}</ul>
+      </div>`;
+    }).join('');
+  }
+
+  /* ============================== DESIGNATION FILTER ============================== */
+  const desigSel = document.getElementById('designationFilter');
+  [...new Set(RECORDS.map(r=>r.desig))].sort().forEach(d=>{
+    const o = document.createElement('option');
+    o.value = d; o.textContent = d;
+    desigSel.appendChild(o);
+  });
+
+  /* ============================== TABLE ============================== */
+  const tbody = document.getElementById('tbody');
+  const searchEl = document.getElementById('search');
+  const sortEl = document.getElementById('sortSelect');
+  const resultCountEl = document.getElementById('resultCount');
+
+  function moveCellHtml(r){
+    if(!prev) return '<span class="movecell">—</span>';
+    if(r.isNew) return '<span class="movecell new">new</span>';
+    if(r.prevRank==null) return '<span class="movecell">—</span>';
+    const delta = r.prevRank - r.rank;
+    if(delta > 0) return `<span class="movecell up">▲ ${delta}</span>`;
+    if(delta < 0) return `<span class="movecell">▼ ${-delta}</span>`;
+    return '<span class="movecell">–</span>';
+  }
+  function estCellHtml(r){
+    if(r.estDate==null) return '<span class="estcell estmuted">insufficient data</span>';
+    return `<span class="estcell"><span class="estdate">${fmtDate(r.estDate)}</span><br><span class="estmuted">~${fmtMonths(r.estMonths)} out</span></span>`;
+  }
+
+  function applyFilters(){
+    const q = searchEl.value.trim().toLowerCase();
+    const desig = desigSel.value;
+    let rows = RECORDS.filter(r=>{
+      if(activeCat && r.catKey!==activeCat) return false;
+      if(desig && r.desig!==desig) return false;
+      if(q && !(r.name.toLowerCase().includes(q) || r.dept.toLowerCase().includes(q))) return false;
+      return true;
+    });
+
+    const sort = sortEl.value;
+    rows.sort((a,b)=>{
+      switch(sort){
+        case 'wait_desc': return b.days - a.days;
+        case 'wait_asc': return a.days - b.days;
+        case 'rank_asc': return (a.catLabel.localeCompare(b.catLabel)) || (a.rank-b.rank);
+        case 'est_asc': {
+          const av = a.estMonths==null ? Infinity : a.estMonths;
+          const bv = b.estMonths==null ? Infinity : b.estMonths;
+          return av-bv;
+        }
+        case 'name_asc': return a.name.localeCompare(b.name);
+        case 'dept_asc': return a.dept.localeCompare(b.dept) || (b.days-a.days);
+        default: return 0;
+      }
+    });
+
+    tbody.innerHTML = rows.map(r=>`
+      <tr>
+        <td class="rankcell">#${r.rank}</td>
+        <td class="namecell">${r.name}</td>
+        <td class="desigcell">${r.desig}</td>
+        <td>${r.dept}</td>
+        <td><span class="catpill">${r.catLabel}</span></td>
+        <td class="datecell">${fmtDate(r.date)}</td>
+        <td class="waitcell"><span class="waitbadge"><span class="dot ${waitTier(r.days)}"></span>${fmtWait(r.days)}</span></td>
+        <td>${moveCellHtml(r)}</td>
+        <td>${estCellHtml(r)}</td>
+      </tr>
+    `).join('');
+
+    resultCountEl.textContent = `Showing ${rows.length} of ${TOTAL}`;
+    renderCatChart();
+    renderVelocityChart();
+    renderDeptChart(rows);
+    renderWaitChart(rows);
+  }
+
+  document.getElementById('resetBtn').addEventListener('click', ()=>{
+    activeCat=''; searchEl.value=''; desigSel.value=''; sortEl.value='rank_asc';
+    renderSheets(); applyFilters();
+  });
+  searchEl.addEventListener('input', applyFilters);
+  desigSel.addEventListener('change', applyFilters);
+  sortEl.addEventListener('change', applyFilters);
+
+  document.querySelectorAll('thead th').forEach(th=>{
+    th.addEventListener('click', ()=>{
+      const k = th.dataset.k;
+      const map = {rank:'rank_asc', name:'name_asc', desig:null, dept:'dept_asc', cat:null, date:null, wait:'wait_desc', move:null, est:'est_asc'};
+      if(map[k]){ sortEl.value = map[k]; applyFilters(); }
+    });
+  });
+
+  /* ============================== PERSON SEARCH PANEL ============================== */
+  const personInput = document.getElementById('personSearch');
+  const searchResultsEl = document.getElementById('searchResults');
+  function renderPersonSearch(){
+    const q = personInput.value.trim().toLowerCase();
+    if(!q){ searchResultsEl.innerHTML = ''; return; }
+    const nq = normName(q);
+    const hits = RECORDS.filter(r=> r.name.toLowerCase().includes(q) || normName(r.name).includes(nq));
+    if(!hits.length){
+      searchResultsEl.innerHTML = '<div class="search-empty">No match in the current register. Check spelling, or your name may not be on a housing waiting list.</div>';
+      return;
+    }
+    searchResultsEl.innerHTML = hits.slice(0,8).map(r=>{
+      const estStr = r.estDate ? fmtDate(r.estDate)+' ('+fmtMonths(r.estMonths)+' out)' : 'insufficient data yet';
+      const moveStr = !prev ? '—' : (r.isNew ? 'new this update' : (r.prevRank!=null ? (r.prevRank-r.rank>0 ? 'moved up '+(r.prevRank-r.rank)+' spots' : (r.prevRank-r.rank<0 ? 'moved back '+(r.rank-r.prevRank)+' spots' : 'unchanged')) : '—'));
+      return `<div class="search-hit">
+        <div><div class="sh-name">${r.name}</div><div class="sh-sub">${r.desig} · ${r.dept} · ${r.catLabel}</div></div>
+        <div><div class="sh-stat-label">Current rank</div><div class="sh-stat-val">#${r.rank}</div></div>
+        <div><div class="sh-stat-label">Waiting</div><div class="sh-stat-val">${fmtWait(r.days)}</div></div>
+        <div><div class="sh-stat-label">Projected turn</div><div class="sh-stat-val" style="font-size:13px;">${estStr}</div></div>
+      </div>`;
+    }).join('');
+  }
+  personInput.addEventListener('input', renderPersonSearch);
+
+  /* ============================== INIT ============================== */
+  renderSheets();
+  renderMovements();
+  applyFilters();
+}
+
+main();
+</script>
+</body>
+</html>
